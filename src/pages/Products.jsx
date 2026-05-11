@@ -3,6 +3,8 @@ import axios from 'axios';
 import { Search, Package, Plus, Layers, X, CheckCircle, PlusCircle, Printer, Trash2 } from 'lucide-react';
 import Barcode from 'react-barcode';
 
+const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://magazin-crm-backend.onrender.com';
+
 const Products = () => {
     const [products, setProducts] = useState([]);
     const [search, setSearch] = useState('');
@@ -12,7 +14,7 @@ const Products = () => {
         e.stopPropagation();
         if (window.confirm(`${name} mahsulotini o'chirmoqchimisiz?`)) {
             try {
-                await axios.delete(`https://magazin-crm-backend.onrender.com/api/products/${id}`);
+                await axios.delete(`${API}/api/products/${id}`);
                 setProducts(products.filter(p => p.id !== id));
             } catch (err) {
                 alert("O'chirishda xatolik yuz berdi");
@@ -51,7 +53,7 @@ const Products = () => {
 
     const fetchProducts = async () => {
         try {
-            const res = await axios.get('https://magazin-crm-backend.onrender.com/api/products');
+            const res = await axios.get(`${API}/api/products`);
             setProducts(res.data);
         } catch (err) {
             console.error("Error fetching products", err);
@@ -75,7 +77,7 @@ const Products = () => {
         }
         setRestockLoading(true);
         try {
-            await axios.patch(`https://magazin-crm-backend.onrender.com/api/products/${restockModal.id}/restock`, {
+            await axios.patch(`${API}/api/products/${restockModal.id}/restock`, {
                 add_quantity: parseFloat(addQty)
             });
             alert(`✅ ${restockModal.name} ga ${addQty} dona qo'shildi!`);
@@ -211,7 +213,7 @@ const Products = () => {
                         <div key={p.id} className="product-card">
                             <div className="image-container">
                                 {p.image_url ? (
-                                    <img src={`https://magazin-crm-backend.onrender.com${p.image_url}`} alt={p.name} />
+                                    <img src={`${API}${p.image_url}`} alt={p.name} />
                                 ) : (
                                     <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
                                         <Package size={48} />
@@ -324,6 +326,7 @@ const Products = () => {
                         <input
                             type="number"
                             min="1"
+                            max="1000000000"
                             value={addQty}
                             onChange={e => setAddQty(e.target.value)}
                             placeholder="Masalan: 50"

@@ -1,21 +1,26 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { Trash2, ShoppingCart, Plus, Search, XCircle, CheckCircle } from 'lucide-react';
+import { Trash2, ShoppingCart, Plus, Search, XCircle, CheckCircle, Printer, Camera } from 'lucide-react';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
-const API = 'https://magazin-crm-backend.onrender.com';
+const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://magazin-crm-backend.onrender.com';
 
 const Sale = () => {
     const [basket, setBasket] = useState([]);
     const [tempProduct, setTempProduct] = useState(null);
     const [sellQuantity, setSellQuantity] = useState(1);
     const [sellArea, setSellArea] = useState(0);
+    const [sellSom, setSellSom] = useState(0);
+    const [sellUsd, setSellUsd] = useState(0);
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [searchVal, setSearchVal] = useState('');
     const [searchStatus, setSearchStatus] = useState(''); // 'searching' | 'found' | 'notfound'
+    const [showReceipt, setShowReceipt] = useState(false);
+    const [lastSale, setLastSale] = useState(null);
+    const [showScanner, setShowScanner] = useState(false);
     const searchInputRef = useRef(null);
     const debounceTimer = useRef(null);
-
 
     // ─── Search ──────────────────────────────────────────────────────────────
     const doSearch = useCallback(async (val) => {
@@ -74,8 +79,24 @@ const Sale = () => {
         setTempProduct(p);
         setSellQuantity(1);
         setSellArea(String(p.size || 0));
+        setSellSom(p.sale_som || 0);
+        setSellUsd(p.sale_usd || 0);
         setShowSuggestions(false);
         setSuggestions([]);
+    };
+
+    const handleUsdChange = (val) => {
+        setSellUsd(val);
+        if (tempProduct && tempProduct.dollar_rate) {
+            setSellSom(Math.round(parseFloat(val) * tempProduct.dollar_rate));
+        }
+    };
+
+    const handleSomChange = (val) => {
+        setSellSom(val);
+        if (tempProduct && tempProduct.dollar_rate && tempProduct.dollar_rate > 0) {
+            setSellUsd((parseFloat(val) / tempProduct.dollar_rate).toFixed(2));
+        }
     };
 
     // ─── Basket ──────────────────────────────────────────────────────────────
@@ -83,13 +104,16 @@ const Sale = () => {
         if (!tempProduct) return;
         const qty = parseFloat(sellQuantity) || 0;
         const area = parseFloat(sellArea) || 0;
-        const exists = basket.findIndex(i => i.product_id === tempProduct.id);
+        const som = parseFloat(sellSom) || 0;
+        const usd = parseFloat(sellUsd) || 0;
+        const exists = basket.findIndex(i => i.product_id === tempProduct.id && i.sale_usd === usd);
 
         if (exists > -1) {
             const nb = [...basket];
             nb[exists].sell_quantity += qty;
             nb[exists].sell_area += area;
-            nb[exists].total_usd = nb[exists].sell_quantity * tempProduct.sale_usd;
+            nb[exists].total_usd = nb[exists].sell_quantity * nb[exists].sale_usd;
+            nb[exists].total_som = nb[exists].sell_quantity * nb[exists].sale_som;
             setBasket(nb);
         } else {
             setBasket([...basket, {
@@ -99,8 +123,10 @@ const Sale = () => {
                 image_url: tempProduct.image_url,
                 sell_quantity: qty,
                 sell_area: area,
-                sale_usd: tempProduct.sale_usd,
-                total_usd: qty * tempProduct.sale_usd
+                sale_som: som,
+                sale_usd: usd,
+                total_usd: qty * usd,
+                total_som: qty * som
             }]);
         }
         setTempProduct(null);
@@ -113,21 +139,57 @@ const Sale = () => {
     const handleCheckout = async () => {
         if (basket.length === 0) return;
         try {
-            await axios.post(`${API}/api/sales`, {
+            const res = await axios.post(`${API}/api/sales`, {
                 items: basket.map(i => ({
                     product_id: i.product_id,
                     sell_quantity: i.sell_quantity,
-                    sell_area: i.sell_area
+                    sell_area: i.sell_area,
+                    sale_som: i.sale_som,
+                    sale_usd: i.sale_usd
                 }))
             });
-            alert('✅ Sotuv muvaffaqiyatli yakunlandi!');
+            setLastSale({
+                items: basket,
+                date: new Date().toLocaleString(),
+                total_usd: basket.reduce((s, i) => s + i.total_usd, 0),
+                total_som: basket.reduce((s, i) => s + i.total_som, 0)
+            });
+            setShowReceipt(true);
             setBasket([]);
         } catch (e) {
             alert('❌ ' + (e.response?.data?.message || 'Xatolik yuz berdi'));
         }
     };
 
-    const grandTotal = basket.reduce((s, i) => s + i.total_usd, 0);
+    const handlePrint = () => {
+        window.print();
+    };
+
+    useEffect(() => {
+        if (!showScanner) return;
+
+        const scanner = new Html5QrcodeScanner("qr-reader", { 
+            fps: 10, 
+            qrbox: { width: 250, height: 250 },
+            rememberLastUsedCamera: true,
+            aspectRatio: 1.0
+        });
+
+        scanner.render((decodedText) => {
+            setSearchVal(decodedText);
+            doSearch(decodedText);
+            setShowScanner(false);
+        }, (error) => {
+            // Ignore trivial scanning errors
+        });
+
+        return () => {
+            scanner.clear().catch(err => console.error("Scanner clear error:", err));
+        };
+    }, [showScanner, doSearch]);
+
+    const grandTotalUsd = basket.reduce((s, i) => s + i.total_usd, 0);
+    const grandTotalSom = basket.reduce((s, i) => s + i.total_som, 0);
 
     return (
         <div style={{ display: 'flex', gap: '25px', alignItems: 'flex-start' }}>
@@ -157,12 +219,18 @@ const Sale = () => {
                 }
                 .big-search:focus { border-color: #4f46e5; box-shadow: 0 0 0 4px rgba(79,70,229,0.1); }
                 @keyframes spin { to { transform: rotate(360deg); } }
+
+                @media print {
+                    .no-print { display: none !important; }
+                    .print-only { display: block !important; }
+                    body { background: white; margin: 0; padding: 0; }
+                    .receipt-container { width: 80mm; padding: 5mm; font-family: monospace; }
+                }
+                .print-only { display: none; }
             `}</style>
 
             {/* LEFT COLUMN */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-
-
+            <div className="no-print" style={{ flex: 1, minWidth: 0 }}>
                 {/* SEARCH — PRIMARY METHOD */}
                 <div className="card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
@@ -183,6 +251,13 @@ const Sale = () => {
                             autoFocus
                         />
                         <button
+                            onClick={() => setShowScanner(!showScanner)}
+                            style={{ position: 'absolute', right: '65px', top: '50%', transform: 'translateY(-50%)', background: '#f1f5f9', border: 'none', color: '#4f46e5', borderRadius: '10px', padding: '10px 14px', cursor: 'pointer' }}
+                            title="Kameradan skanerlash"
+                        >
+                            <Camera size={18} />
+                        </button>
+                        <button
                             onClick={() => doSearch(searchVal)}
                             style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: '#4f46e5', border: 'none', color: 'white', borderRadius: '10px', padding: '10px 14px', cursor: 'pointer' }}
                         >
@@ -191,6 +266,12 @@ const Sale = () => {
                                 : <Search size={18} />
                             }
                         </button>
+
+                        {showScanner && (
+                            <div style={{ marginTop: '20px', borderRadius: '16px', overflow: 'hidden', border: '2px solid #4f46e5' }}>
+                                <div id="qr-reader" style={{ width: '100%' }}></div>
+                            </div>
+                        )}
 
                         {showSuggestions && suggestions.length > 0 && (
                             <div className="sugg-list">
@@ -235,19 +316,29 @@ const Sale = () => {
                                     <span style={{ fontWeight: 800, fontSize: 18 }}>{tempProduct.name}</span>
                                 </div>
                                 <div style={{ fontSize: 13, color: '#64748b' }}>Kod: {tempProduct.code} &nbsp;|&nbsp; Qoldiq: {tempProduct.quantity} dona</div>
-                                <div style={{ fontSize: 20, fontWeight: 800, color: '#10b981', marginTop: 4 }}>${tempProduct.sale_usd}</div>
                             </div>
                             <XCircle onClick={() => { setTempProduct(null); setSearchVal(''); }} style={{ cursor: 'pointer', color: '#94a3b8' }} size={22} />
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                             <div>
                                 <label style={{ fontSize: 12, fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 6 }}>MIQDOR (DONA)</label>
-                                <input type="number" min="1" value={sellQuantity} onChange={e => setSellQuantity(e.target.value)} onKeyDown={e => e.key === 'Enter' && addToBasket()} className="input-field" style={{ margin: 0 }} autoFocus />
+                                <input type="number" min="0" max="1000000000" value={sellQuantity} onChange={e => setSellQuantity(e.target.value)} onKeyDown={e => e.key === 'Enter' && addToBasket()} className="input-field" style={{ margin: 0 }} autoFocus />
                             </div>
                             <div>
                                 <label style={{ fontSize: 12, fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 6 }}>KVADRAT (m²)</label>
-                                <input type="number" min="0" value={sellArea} onChange={e => setSellArea(e.target.value)} className="input-field" style={{ margin: 0 }} />
+                                <input type="number" min="0" max="1000000000" value={sellArea} onChange={e => setSellArea(e.target.value)} className="input-field" style={{ margin: 0 }} />
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                            <div>
+                                <label style={{ fontSize: 12, fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 6 }}>NARX (SO'M)</label>
+                                <input type="number" min="0" max="1000000000" value={sellSom} onChange={e => handleSomChange(e.target.value)} className="input-field" style={{ margin: 0, fontWeight: 800, color: '#4f46e5' }} />
+                            </div>
+                            <div>
+                                <label style={{ fontSize: 12, fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 6 }}>NARX ($)</label>
+                                <input type="number" min="0" max="1000000000" step="0.01" value={sellUsd} onChange={e => handleUsdChange(e.target.value)} className="input-field" style={{ margin: 0, color: '#10b981' }} />
                             </div>
                         </div>
 
@@ -259,7 +350,7 @@ const Sale = () => {
             </div>
 
             {/* RIGHT COLUMN — BASKET */}
-            <div className="card" style={{ flex: '0 0 420px', maxWidth: 420 }}>
+            <div className="card no-print" style={{ flex: '0 0 420px', maxWidth: 420 }}>
                 <h2 style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 0 }}>
                     <ShoppingCart size={26} /> Savat
                     {basket.length > 0 && <span style={{ background: '#4f46e5', color: 'white', borderRadius: 20, padding: '2px 10px', fontSize: 14 }}>{basket.length}</span>}
@@ -280,10 +371,13 @@ const Sale = () => {
                                 <tr key={i}>
                                     <td>
                                         <div style={{ fontWeight: 700 }}>{item.name}</div>
-                                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.code}</div>
+                                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{item.code} | ${item.sale_usd} | {item.sale_som.toLocaleString()}so'm</div>
                                     </td>
                                     <td style={{ fontWeight: 700 }}>{item.sell_quantity}</td>
-                                    <td style={{ fontWeight: 800, color: '#10b981' }}>${item.total_usd.toFixed(2)}</td>
+                                    <td style={{ fontWeight: 800, color: '#10b981' }}>
+                                        ${item.total_usd.toFixed(2)}<br/>
+                                        <span style={{fontSize: 10, color: '#64748b'}}>{item.total_som.toLocaleString()}so'm</span>
+                                    </td>
                                     <td>
                                         <button onClick={() => { const nb = [...basket]; nb.splice(i, 1); setBasket(nb); }}
                                             style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: 8, padding: '8px 10px', cursor: 'pointer' }}>
@@ -298,13 +392,118 @@ const Sale = () => {
 
                 {basket.length > 0 && (
                     <div style={{ marginTop: 20, padding: 25, background: 'var(--primary-gradient)', borderRadius: 20, color: 'white' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                            <span style={{ fontSize: 14 }}>Jami ($):</span>
+                            <span style={{ fontSize: 24, fontWeight: 800 }}>${grandTotalUsd.toFixed(2)}</span>
+                        </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
-                            <span style={{ fontSize: 16 }}>Jami summa:</span>
-                            <span style={{ fontSize: 28, fontWeight: 800 }}>${grandTotal.toFixed(2)}</span>
+                            <span style={{ fontSize: 14 }}>Jami (so'm):</span>
+                            <span style={{ fontSize: 18, fontWeight: 700 }}>{grandTotalSom.toLocaleString()} so'm</span>
                         </div>
                         <button onClick={handleCheckout} className="btn-primary" style={{ background: 'white', color: '#4f46e5', padding: 18, fontSize: 16 }}>
                             SOTUVNI YAKUNLASH ✅
                         </button>
+                    </div>
+                )}
+            </div>
+
+            {/* RECEIPT MODAL */}
+            {showReceipt && lastSale && (
+                <div className="no-print" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="card" style={{ width: 400, padding: 0, overflow: 'hidden' }}>
+                        <div style={{ padding: 20, borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0 }}>Sotuv yakunlandi</h3>
+                            <XCircle onClick={() => setShowReceipt(false)} style={{ cursor: 'pointer' }} />
+                        </div>
+                        <div style={{ padding: 20, maxHeight: '70vh', overflowY: 'auto', background: '#f8fafc' }}>
+                            <div id="receipt-content" style={{ background: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)', fontSize: '14px', fontFamily: 'monospace' }}>
+                                <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                                    <h2 style={{ margin: '0 0 5px 0' }}>OMBOR CRM</h2>
+                                    <div>Xarid cheki</div>
+                                    <div style={{ fontSize: '12px', color: '#666' }}>{lastSale.date}</div>
+                                </div>
+                                <div style={{ borderBottom: '1px dashed #ccc', marginBottom: 10 }}></div>
+                                <table style={{ width: '100%', fontSize: '12px' }}>
+                                    <thead>
+                                        <tr style={{ borderBottom: '1px solid #eee' }}>
+                                            <th style={{ textAlign: 'left' }}>Nomi</th>
+                                            <th style={{ textAlign: 'center' }}>Soni</th>
+                                            <th style={{ textAlign: 'right' }}>Narxi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {lastSale.items.map((item, i) => (
+                                            <tr key={i}>
+                                                <td style={{ padding: '4px 0' }}>{item.name}</td>
+                                                <td style={{ textAlign: 'center' }}>{item.sell_quantity}</td>
+                                                <td style={{ textAlign: 'right' }}>${item.sale_usd}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                <div style={{ borderBottom: '1px dashed #ccc', margin: '10px 0' }}></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '16px' }}>
+                                    <span>JAMI:</span>
+                                    <span>${lastSale.total_usd.toFixed(2)}</span>
+                                </div>
+                                <div style={{ textAlign: 'right', fontSize: '12px', marginTop: 5 }}>
+                                    {lastSale.total_som.toLocaleString()} so'm
+                                </div>
+                                <div style={{ textAlign: 'center', marginTop: 30, fontSize: '12px' }}>
+                                    Xaridingiz uchun rahmat!
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ padding: 20, display: 'flex', gap: 10 }}>
+                            <button onClick={handlePrint} className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                                <Printer size={18} /> CHEK CHIQARISH
+                            </button>
+                            <button onClick={() => setShowReceipt(false)} className="btn-primary" style={{ flex: 1, background: '#94a3b8' }}>
+                                YOPISH
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* PRINT ONLY VIEW */}
+            <div className="print-only">
+                {lastSale && (
+                    <div className="receipt-container">
+                        <div style={{ textAlign: 'center', marginBottom: '10px' }}>
+                            <h2 style={{ margin: '0' }}>OMBOR CRM</h2>
+                            <div style={{ fontSize: '12px' }}>{lastSale.date}</div>
+                        </div>
+                        <div style={{ borderBottom: '1px dashed black', margin: '10px 0' }}></div>
+                        <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid black' }}>
+                                    <th style={{ textAlign: 'left' }}>Mahsulot</th>
+                                    <th style={{ textAlign: 'right' }}>Soni</th>
+                                    <th style={{ textAlign: 'right' }}>Summa</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {lastSale.items.map((item, i) => (
+                                    <tr key={i}>
+                                        <td>{item.name}</td>
+                                        <td style={{ textAlign: 'right' }}>{item.sell_quantity}</td>
+                                        <td style={{ textAlign: 'right' }}>${item.total_usd.toFixed(2)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <div style={{ borderBottom: '1px dashed black', margin: '10px 0' }}></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                            <span>JAMI:</span>
+                            <span>${lastSale.total_usd.toFixed(2)}</span>
+                        </div>
+                        <div style={{ textAlign: 'right', fontSize: '10px' }}>
+                            {lastSale.total_som.toLocaleString()} so'm
+                        </div>
+                        <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '10px' }}>
+                            Xaridingiz uchun rahmat!
+                        </div>
                     </div>
                 )}
             </div>

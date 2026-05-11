@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
+const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://magazin-crm-backend.onrender.com';
+
 const Login = () => {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -10,7 +12,7 @@ const Login = () => {
     const handleLogin = async (e) => {
         e.preventDefault();
         try {
-            const res = await axios.post('https://magazin-crm-backend.onrender.com/api/auth/login', { username, password });
+            const res = await axios.post(`${API}/api/auth/login`, { username, password });
             localStorage.setItem('token', res.data.token);
             navigate('/');
         } catch (error) {

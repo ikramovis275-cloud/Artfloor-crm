@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 
+const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://magazin-crm-backend.onrender.com';
+
 const Dashboard = () => {
     const [stats, setStats] = useState({
         totals: { total_som: 0, total_usd: 0, total_quantity: 0 },
@@ -12,7 +14,7 @@ const Dashboard = () => {
     useEffect(() => {
         const fetchStats = async () => {
             try {
-                const res = await axios.get('https://magazin-crm-backend.onrender.com/api/reports/dashboard');
+                const res = await axios.get(`${API}/api/reports/dashboard`);
                 setStats(res.data);
             } catch (err) {
                 console.error("Dashboard yuklashda xatolik");

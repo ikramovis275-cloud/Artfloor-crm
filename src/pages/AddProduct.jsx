@@ -3,6 +3,8 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Camera, UploadCloud, XCircle, Plus } from 'lucide-react';
 
+const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://magazin-crm-backend.onrender.com';
+
 const AddProduct = () => {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
@@ -28,47 +30,117 @@ const AddProduct = () => {
 
     const startCamera = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            // Use ideal for better compatibility across devices
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    facingMode: { ideal: 'environment' },
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            });
+            
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
-                // Wait for video to be ready before playing to avoid DOM exceptions in some browsers
                 videoRef.current.onloadedmetadata = () => {
-                    videoRef.current.play().catch(e => console.error(e));
+                    videoRef.current.play().catch(e => console.error("Video play error:", e));
                 };
             }
             setCameraOn(true);
-            setPreview(null); // Clear preview when starting camera
+            setPreview(null);
             setImage(null);
         } catch (err) {
-            alert('Kameraga ulanishda xato: ' + err.message);
+            console.error("Camera access error:", err);
+            // Fallback for devices where 'environment' might still cause issues
+            if (err.name === 'OverconstrainedError' || err.name === 'NotFoundError') {
+                try {
+                    const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = fallbackStream;
+                        videoRef.current.play().catch(e => console.error(e));
+                    }
+                    setCameraOn(true);
+                    return;
+                } catch (e) {
+                    alert('Kameraga ulanish imkonsiz: ' + e.message);
+                }
+            }
+            alert('Kameraga ulanishda xato: ' + err.message + '\nIltimos, kamera ruxsatini va brauzer sozlamalarini tekshiring.');
         }
     };
 
     const stopCamera = () => {
-        if (videoRef.current && videoRef.current.srcObject) {
-            videoRef.current.srcObject.getTracks().forEach(track => track.stop());
-            videoRef.current.srcObject = null;
+        try {
+            console.log("Stopping camera...");
+            if (videoRef.current && videoRef.current.srcObject) {
+                const stream = videoRef.current.srcObject;
+                if (stream.getTracks) {
+                    stream.getTracks().forEach(track => {
+                        track.stop();
+                        console.log("Track stopped:", track.kind);
+                    });
+                }
+                videoRef.current.srcObject = null;
+            }
+        } catch (err) {
+            console.error("Stop camera error:", err);
+        } finally {
+            setCameraOn(false);
+            console.log("Camera component state: OFF");
         }
-        setCameraOn(false);
     };
 
     const capturePhoto = () => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (!video || !canvas) return;
-
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 480;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        
-        canvas.toBlob(blob => {
-            if (blob) {
-                const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                setImage(file);
-                setPreview(URL.createObjectURL(file));
-                stopCamera();
+        console.log("Capture button clicked");
+        try {
+            const video = videoRef.current;
+            const canvas = canvasRef.current;
+            if (!video || !canvas) {
+                console.error("Video or Canvas ref missing");
+                return;
             }
-        }, 'image/jpeg', 0.95);
+
+            // Get actual dimensions
+            const width = video.videoWidth || video.clientWidth || 640;
+            const height = video.videoHeight || video.clientHeight || 480;
+            console.log(`Capturing at ${width}x${height}`);
+
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, width, height);
+            
+            // Get data URL
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            if (!dataUrl || dataUrl === 'data:,') {
+                throw new Error("Canvas is empty or invalid");
+            }
+            
+            setPreview(dataUrl);
+            
+            // Background conversion to File
+            const byteString = atob(dataUrl.split(',')[1]);
+            const mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            const blob = new Blob([ab], {type: mimeString});
+            const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
+            
+            setImage(file);
+            console.log("Image state updated");
+            
+            // Close camera after a tiny delay to ensure state updates are visible
+            setTimeout(() => {
+                stopCamera();
+            }, 100);
+            
+        } catch (err) {
+            console.error("Capture error:", err);
+            alert("Rasm olishda xatolik: " + err.message);
+        }
     };
 
     // Cleanup camera if user leaves component
@@ -88,12 +160,13 @@ const AddProduct = () => {
         if (image) data.append('image', image);
 
         try {
-            await axios.post('https://magazin-crm-backend.onrender.com/api/products', data, {
+            await axios.post(`${API}/api/products`, data, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             alert("✅ Mahsulot muvaffaqiyatli saqlandi!");
             navigate('/products');
         } catch (error) {
+            console.error("Submit error:", error);
             alert("❌ Xatolik yuz berdi");
         }
     };
@@ -103,6 +176,12 @@ const AddProduct = () => {
                 .add-product-card { max-width: 850px; margin: 0 auto; animation: fadeIn 0.5s; }
                 .add-product-grid { display: grid; grid-template-columns: minmax(300px, 1fr) 1.2fr; gap: 25px; }
                 .price-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+                .camera-overlay-btn { 
+                    transition: transform 0.2s, background 0.2s;
+                }
+                .camera-overlay-btn:active {
+                    transform: scale(0.95);
+                }
                 @media (max-width: 768px) {
                     .add-product-grid { grid-template-columns: 1fr; }
                     .price-grid { grid-template-columns: 1fr; }
@@ -118,21 +197,40 @@ const AddProduct = () => {
                     <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '2px dashed #cbd5e1', position: 'relative' }}>
                         <h3 style={{ margin: '0 0 15px 0', fontSize: '15px', color: '#64748b' }}>Rasm qo'shish</h3>
                         
-                        {/* Always render video so ref exists, just hide it */}
+                        {/* CAMERA UI */}
                         <div style={{ display: cameraOn ? 'flex' : 'none', flexDirection: 'column', gap: '10px' }}>
-                            <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: 'black', height: '240px' }}>
+                            <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: 'black', height: '300px', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
                                 <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                
+                                {/* Controls on top of video */}
+                                <div style={{ position: 'absolute', bottom: '20px', left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: '15px', zIndex: 1000 }}>
+                                    <button 
+                                        type="button" 
+                                        onClick={(e) => { 
+                                            e.preventDefault(); 
+                                            e.stopPropagation(); 
+                                            capturePhoto(); 
+                                        }} 
+                                        className="camera-overlay-btn"
+                                        style={{ background: '#10b981', color: 'white', border: '4px solid white', padding: '12px 25px', borderRadius: '50px', fontWeight: 900, fontSize: '14px', cursor: 'pointer', boxShadow: '0 10px 25px rgba(16,185,129,0.5)' }}
+                                    >
+                                        📸 RASM OLISH
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={(e) => { 
+                                            e.preventDefault(); 
+                                            e.stopPropagation(); 
+                                            stopCamera(); 
+                                        }} 
+                                        className="camera-overlay-btn"
+                                        style={{ background: '#ef4444', color: 'white', border: '2px solid white', padding: '12px 20px', borderRadius: '50px', fontWeight: 700, fontSize: '13px', cursor: 'pointer', boxShadow: '0 10px 25px rgba(239,68,68,0.3)' }}
+                                    >
+                                        BEKOR
+                                    </button>
+                                </div>
                             </div>
                             <canvas ref={canvasRef} style={{ display: 'none' }} />
-                            
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
-                                <button type="button" onClick={capturePhoto} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 800, cursor: 'pointer' }}>
-                                    📸 Rasm Olish
-                                </button>
-                                <button type="button" onClick={stopCamera} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px', background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '10px', fontWeight: 700, cursor: 'pointer' }}>
-                                    Bekor qilish
-                                </button>
-                            </div>
                         </div>
 
                         {!cameraOn && (
@@ -190,13 +288,13 @@ const AddProduct = () => {
                             </div>
                             <div>
                                 <label style={{ fontSize: '13px', fontWeight: 700, color: '#64748b' }}>O'lcham (Birlik)</label>
-                                <input type="number" step="0.0001" name="size" placeholder="m² yoki kg" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} />
+                                <input type="number" step="0.0001" name="size" placeholder="m² yoki kg" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000000" />
                             </div>
                         </div>
 
                         <div style={{ marginTop: '5px' }}>
                             <label style={{ fontSize: '13px', fontWeight: 700, color: '#64748b' }}>Boshlang'ich miqdor *</label>
-                            <input type="number" step="0.001" name="quantity" placeholder="Zaxiradagi soni" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} />
+                            <input type="number" step="0.001" name="quantity" placeholder="Zaxiradagi soni" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000000" />
                         </div>
                     </div>
                 </div>
@@ -204,15 +302,15 @@ const AddProduct = () => {
                 <div className="price-grid" style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px' }}>
                     <div>
                         <label style={{ fontSize: '13px', fontWeight: 700, color: '#ef4444' }}>Olish narxi (USD)</label>
-                        <input type="number" step="0.01" name="cost_usd" placeholder="0.00" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} />
+                        <input type="number" step="0.01" name="cost_usd" placeholder="0.00" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000000" />
                     </div>
                     <div>
                         <label style={{ fontSize: '13px', fontWeight: 700, color: '#10b981' }}>Sotish narxi (USD)</label>
-                        <input type="number" step="0.01" name="sale_usd" placeholder="0.00" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} />
+                        <input type="number" step="0.01" name="sale_usd" placeholder="0.00" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000000" />
                     </div>
                     <div>
                         <label style={{ fontSize: '13px', fontWeight: 700, color: '#4f46e5' }}>Dollar kursi (So'm)</label>
-                        <input type="number" name="dollar_rate" value={formData.dollar_rate} className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} />
+                        <input type="number" name="dollar_rate" value={formData.dollar_rate} className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000000" />
                     </div>
                 </div>
 
