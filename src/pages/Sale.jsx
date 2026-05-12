@@ -6,6 +6,8 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://magazin-crm-backend.onrender.com';
 
 const Sale = () => {
+    const [allProducts, setAllProducts] = useState([]);
+    const [loading, setLoading] = useState(false);
     const [basket, setBasket] = useState([]);
     const [tempProduct, setTempProduct] = useState(null);
     const [sellQuantity, setSellQuantity] = useState(1);
@@ -22,37 +24,40 @@ const Sale = () => {
     const searchInputRef = useRef(null);
     const debounceTimer = useRef(null);
 
+    // ─── Fetch All Products ──────────────────────────────────────────────────
+    const fetchProducts = useCallback(async () => {
+        setLoading(true);
+        try {
+            const res = await axios.get(`${API}/api/products`);
+            setAllProducts(res.data || []);
+        } catch (e) {
+            console.error("Error fetching products:", e);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchProducts();
+    }, [fetchProducts]);
+
     // ─── Search ──────────────────────────────────────────────────────────────
     const doSearch = useCallback(async (val) => {
         const q = (val || '').trim();
-        if (!q) return;
+        if (!q) {
+            setSuggestions([]);
+            setShowSuggestions(false);
+            return;
+        }
         setSearchStatus('searching');
-        setShowSuggestions(false);
 
         try {
-            // 1. Try exact code match first
-            const exact = await axios.get(`${API}/api/products/${encodeURIComponent(q)}`);
-            if (exact.data) {
-                setSearchStatus('found');
-                selectProduct(exact.data);
-                return;
-            }
-        } catch (_) {}
-
-        try {
-            // 2. Fallback: search by name / category
+            // Search by name / category / code
             const res = await axios.get(`${API}/api/products?search=${encodeURIComponent(q)}`);
             const list = res.data || [];
-            if (list.length === 1) {
-                setSearchStatus('found');
-                selectProduct(list[0]);
-            } else if (list.length > 1) {
-                setSearchStatus('');
-                setSuggestions(list.slice(0, 6));
-                setShowSuggestions(true);
-            } else {
-                setSearchStatus('notfound');
-            }
+            setSuggestions(list.slice(0, 10));
+            setShowSuggestions(true);
+            setSearchStatus(list.length > 0 ? 'found' : 'notfound');
         } catch (_) { setSearchStatus('notfound'); }
     }, []);
 
@@ -61,28 +66,36 @@ const Sale = () => {
         setSearchVal(val);
         setSearchStatus('');
         clearTimeout(debounceTimer.current);
-        if (val.length > 1) {
-            debounceTimer.current = setTimeout(() => doSearch(val), 400);
+        if (val.length > 0) {
+            debounceTimer.current = setTimeout(() => doSearch(val), 300);
         } else {
             setShowSuggestions(false);
         }
     };
 
     const handleInputKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            clearTimeout(debounceTimer.current);
-            doSearch(searchVal);
+        if (e.key === 'Enter' && suggestions.length === 1) {
+            selectProduct(suggestions[0]);
         }
     };
 
     const selectProduct = (p) => {
         setTempProduct(p);
         setSellQuantity(1);
-        setSellArea(String(p.size || 0));
+        const initialArea = p.size ? (1 * p.size).toFixed(3) : 0;
+        setSellArea(initialArea);
         setSellSom(p.sale_som || 0);
         setSellUsd(p.sale_usd || 0);
         setShowSuggestions(false);
-        setSuggestions([]);
+        setSearchVal('');
+    };
+
+    const handleQuantityChange = (val) => {
+        setSellQuantity(val);
+        if (tempProduct && tempProduct.size) {
+            const qty = parseFloat(val) || 0;
+            setSellArea((qty * tempProduct.size).toFixed(3));
+        }
     };
 
     const handleUsdChange = (val) => {
@@ -106,6 +119,12 @@ const Sale = () => {
         const area = parseFloat(sellArea) || 0;
         const som = parseFloat(sellSom) || 0;
         const usd = parseFloat(sellUsd) || 0;
+
+        if (qty <= 0) {
+            alert("Miqdor 0 dan katta bo'lishi kerak");
+            return;
+        }
+
         const exists = basket.findIndex(i => i.product_id === tempProduct.id && i.sale_usd === usd);
 
         if (exists > -1) {
@@ -156,6 +175,7 @@ const Sale = () => {
             });
             setShowReceipt(true);
             setBasket([]);
+            fetchProducts(); // Refresh stock
         } catch (e) {
             alert('❌ ' + (e.response?.data?.message || 'Xatolik yuz berdi'));
         }
@@ -229,10 +249,9 @@ const Sale = () => {
                 .print-only { display: none; }
             `}</style>
 
-            {/* LEFT COLUMN */}
             <div className="no-print" style={{ flex: 1, minWidth: 0 }}>
                 {/* SEARCH — PRIMARY METHOD */}
-                <div className="card">
+                <div className="card" style={{ marginBottom: 20 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
                         <Search size={20} color="#4f46e5" />
                         <span style={{ fontWeight: 800, fontSize: '16px' }}>Mahsulot qidirish</span>
@@ -272,25 +291,6 @@ const Sale = () => {
                                 <div id="qr-reader" style={{ width: '100%' }}></div>
                             </div>
                         )}
-
-                        {showSuggestions && suggestions.length > 0 && (
-                            <div className="sugg-list">
-                                {suggestions.map((p, i) => (
-                                    <div key={i} className="sugg-item" onClick={() => selectProduct(p)}>
-                                        <div style={{ width: 50, height: 50, borderRadius: 10, overflow: 'hidden', background: '#f1f5f9', flexShrink: 0 }}>
-                                            {p.image_url
-                                                ? <img src={`${API}${p.image_url}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
-                                                : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>📦</div>
-                                            }
-                                        </div>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontWeight: 700 }}>{p.name}</div>
-                                            <div style={{ fontSize: 12, color: '#94a3b8' }}>Kod: {p.code} &nbsp;|&nbsp; {parseFloat(p.sale_som).toLocaleString()} so'm &nbsp;|&nbsp; Qoldiq: {p.quantity}</div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
                     </div>
 
                     {searchStatus === 'notfound' && (
@@ -300,9 +300,9 @@ const Sale = () => {
                     )}
                 </div>
 
-                {/* FOUND PRODUCT CARD */}
+                {/* FOUND PRODUCT CARD (MODAL-LIKE) */}
                 {tempProduct && (
-                    <div className="card" style={{ marginTop: 20, border: '2px solid #10b981', background: '#f0fdf4' }}>
+                    <div className="card" style={{ marginBottom: 20, border: '3px solid #10b981', background: '#f0fdf4', position: 'sticky', top: '10px', zIndex: 100 }}>
                         <div style={{ display: 'flex', gap: 15, alignItems: 'center', marginBottom: 16 }}>
                             <div style={{ width: 70, height: 70, borderRadius: 12, overflow: 'hidden', background: '#e2e8f0', flexShrink: 0 }}>
                                 {tempProduct.image_url
@@ -315,7 +315,7 @@ const Sale = () => {
                                     <CheckCircle size={18} color="#10b981" />
                                     <span style={{ fontWeight: 800, fontSize: 18 }}>{tempProduct.name}</span>
                                 </div>
-                                <div style={{ fontSize: 13, color: '#64748b' }}>Kod: {tempProduct.code} &nbsp;|&nbsp; Qoldiq: {tempProduct.quantity} dona</div>
+                                <div style={{ fontSize: 13, color: '#64748b' }}>Kod: {tempProduct.code} &nbsp;|&nbsp; Qoldiq: {tempProduct.quantity} dona {tempProduct.size ? `(${tempProduct.total_area} m³)` : ''}</div>
                             </div>
                             <XCircle onClick={() => { setTempProduct(null); setSearchVal(''); }} style={{ cursor: 'pointer', color: '#94a3b8' }} size={22} />
                         </div>
@@ -323,10 +323,10 @@ const Sale = () => {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                             <div>
                                 <label style={{ fontSize: 12, fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 6 }}>MIQDOR (DONA)</label>
-                                <input type="number" min="0" max="1000000000" value={sellQuantity} onChange={e => setSellQuantity(e.target.value)} onKeyDown={e => e.key === 'Enter' && addToBasket()} className="input-field" style={{ margin: 0 }} autoFocus />
+                                <input type="number" min="0" max="1000000000" value={sellQuantity} onChange={e => handleQuantityChange(e.target.value)} onKeyDown={e => e.key === 'Enter' && addToBasket()} className="input-field" style={{ margin: 0 }} autoFocus />
                             </div>
                             <div>
-                                <label style={{ fontSize: 12, fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 6 }}>KVADRAT (m²)</label>
+                                <label style={{ fontSize: 12, fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 6 }}>{tempProduct?.size ? 'KUB (m³)' : 'KVADRAT (m²)'}</label>
                                 <input type="number" min="0" max="1000000000" value={sellArea} onChange={e => setSellArea(e.target.value)} className="input-field" style={{ margin: 0 }} />
                             </div>
                         </div>
@@ -348,6 +348,55 @@ const Sale = () => {
                         </button>
                     </div>
                 )}
+
+                {/* PRODUCT CATALOG */}
+                <div className="card">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <ShoppingCart size={20} color="#4f46e5" />
+                            <span style={{ fontWeight: 800, fontSize: '16px' }}>Mahsulotlar katalogi</span>
+                        </div>
+                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                            {searchVal ? `Topildi: ${allProducts.filter(p => p.name.toLowerCase().includes(searchVal.toLowerCase()) || p.code.toLowerCase().includes(searchVal.toLowerCase())).length} ta` : `Jami: ${allProducts.length} xil`}
+                        </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '15px' }}>
+                        {loading && <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px' }}>Yuklanmoqda...</div>}
+                        {!loading && allProducts.length === 0 && <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', color: '#94a3b8' }}>Mahsulotlar yo'q</div>}
+                        {allProducts
+                            .filter(p => !searchVal || p.name.toLowerCase().includes(searchVal.toLowerCase()) || p.code.toLowerCase().includes(searchVal.toLowerCase()) || (p.category && p.category.toLowerCase().includes(searchVal.toLowerCase())))
+                            .map((p, i) => (
+                            <div key={i} className="catalog-item" onClick={() => selectProduct(p)} style={{
+                                background: 'white', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '12px',
+                                cursor: 'pointer', transition: '0.2s', display: 'flex', flexDirection: 'column', gap: '8px'
+                            }}>
+                                <style>{`
+                                    .catalog-item:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.05); border-color: #4f46e5; }
+                                    .catalog-item img { transition: 0.3s; }
+                                    .catalog-item:hover img { transform: scale(1.05); }
+                                `}</style>
+                                <div style={{ width: '100%', aspectRatio: '1', borderRadius: '10px', overflow: 'hidden', background: '#f1f5f9', position: 'relative' }}>
+                                    {p.image_url
+                                        ? <img src={`${API}${p.image_url}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                                        : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>📦</div>
+                                    }
+                                    <div style={{ position: 'absolute', bottom: '5px', right: '5px', background: 'rgba(255,255,255,0.9)', padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: 800, color: '#4f46e5' }}>
+                                        {parseFloat(p.sale_som).toLocaleString()}
+                                    </div>
+                                </div>
+                                <div style={{ fontWeight: 700, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>Kod: {p.code}</span>
+                                    <span style={{ fontSize: '11px', fontWeight: 700, color: p.quantity > 0 ? '#10b981' : '#ef4444' }}>{p.quantity} dona</span>
+                                </div>
+                                <button className="btn-primary" style={{ padding: '6px', fontSize: '10px', marginTop: 'auto', background: '#f1f5f9', color: '#4f46e5', border: 'none' }}>
+                                    <ShoppingCart size={14} /> SAVATGA
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
 
             {/* RIGHT COLUMN — BASKET */}
