@@ -12,8 +12,8 @@ const AddProduct = () => {
         name: '', 
         size: 0, 
         quantity: 0, 
-        cost_som: 0, 
-        sale_som: 0, 
+        cost_usd: 0, 
+        sale_usd: 0, 
         dollar_rate: parseFloat(localStorage.getItem('dollar_rate')) || 12500, 
         category: 'luxury'
     });
@@ -132,9 +132,9 @@ const AddProduct = () => {
 
     useEffect(() => { return () => stopCamera(); }, []);
 
-    // Converted preview values (USD from So'm)
-    const costUsdPreview = (parseFloat(formData.cost_som) || 0) / (parseFloat(formData.dollar_rate) || 12500);
-    const saleUsdPreview = (parseFloat(formData.sale_som) || 0) / (parseFloat(formData.dollar_rate) || 12500);
+    // Converted preview values (So'm from USD input)
+    const costSomPreview = (parseFloat(formData.cost_usd) || 0) * (parseFloat(formData.dollar_rate) || 12500);
+    const saleSomPreview = (parseFloat(formData.sale_usd) || 0) * (parseFloat(formData.dollar_rate) || 12500);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -149,8 +149,8 @@ const AddProduct = () => {
         });
 
         // Store both in DB
-        data.append('cost_usd', costUsdPreview.toFixed(2));
-        data.append('sale_usd', saleUsdPreview.toFixed(2));
+        data.append('cost_som', costSomPreview);
+        data.append('sale_som', saleSomPreview);
 
         if (image) data.append('image', image);
 
@@ -172,15 +172,15 @@ const AddProduct = () => {
                 .add-product-card { max-width: 850px; margin: 0 auto; animation: fadeIn 0.5s; }
                 .add-product-grid { display: grid; grid-template-columns: minmax(300px, 1fr) 1.2fr; gap: 25px; }
                 .price-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
-                .preview-usd { 
+                .preview-som { 
                     font-size: 14px; 
                     font-weight: 800; 
-                    color: #4f46e5; 
+                    color: #64748b; 
                     margin-top: 8px;
                     padding: 8px 12px;
                     background: white;
                     border-radius: 8px;
-                    border-left: 4px solid #10b981;
+                    border-left: 4px solid #4f46e5;
                 }
                 .camera-overlay-btn { 
                     transition: transform 0.2s, background 0.2s;
@@ -307,14 +307,14 @@ const AddProduct = () => {
 
                 <div className="price-grid" style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px' }}>
                     <div>
-                        <label style={{ fontSize: '13px', fontWeight: 700, color: '#ef4444' }}>Olish narxi (So'm)</label>
-                        <input type="number" step="1" name="cost_som" placeholder="0" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="2000000000" />
-                        <div className="preview-usd">= ${costUsdPreview.toFixed(2)}</div>
+                        <label style={{ fontSize: '13px', fontWeight: 700, color: '#ef4444' }}>Olish narxi ($)</label>
+                        <input type="number" step="0.0000001" name="cost_usd" placeholder="0.0000001" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000" />
+                        <div className="preview-som">= {costSomPreview.toLocaleString()} so'm</div>
                     </div>
                     <div>
-                        <label style={{ fontSize: '13px', fontWeight: 700, color: '#10b981' }}>Sotish narxi (So'm)</label>
-                        <input type="number" step="1" name="sale_som" placeholder="0" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="2000000000" />
-                        <div className="preview-usd">= ${saleUsdPreview.toFixed(2)}</div>
+                        <label style={{ fontSize: '13px', fontWeight: 700, color: '#10b981' }}>Sotish narxi ($)</label>
+                        <input type="number" step="0.0000001" name="sale_usd" placeholder="0.0000001" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000" />
+                        <div className="preview-som">= {saleSomPreview.toLocaleString()} so'm</div>
                     </div>
                     <div>
                         <label style={{ fontSize: '13px', fontWeight: 700, color: '#4f46e5' }}>Dollar kursi (1$ = ? so'm)</label>
