@@ -285,7 +285,7 @@ const Sale = () => {
                                         </div>
                                         <div style={{ flex: 1 }}>
                                             <div style={{ fontWeight: 700 }}>{p.name}</div>
-                                            <div style={{ fontSize: 12, color: '#94a3b8' }}>Kod: {p.code} &nbsp;|&nbsp; ${p.sale_usd} &nbsp;|&nbsp; Qoldiq: {p.quantity}</div>
+                                            <div style={{ fontSize: 12, color: '#94a3b8' }}>Kod: {p.code} &nbsp;|&nbsp; {parseFloat(p.sale_som).toLocaleString()} so'm &nbsp;|&nbsp; Qoldiq: {p.quantity}</div>
                                         </div>
                                     </div>
                                 ))}
@@ -333,12 +333,13 @@ const Sale = () => {
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                             <div>
-                                <label style={{ fontSize: 12, fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 6 }}>NARX (SO'M)</label>
-                                <input type="number" min="0" max="1000000000" value={sellSom} onChange={e => handleSomChange(e.target.value)} className="input-field" style={{ margin: 0, fontWeight: 800, color: '#4f46e5' }} />
+                                <label style={{ fontSize: 12, fontWeight: 800, color: '#4f46e5', display: 'block', marginBottom: 6 }}>NARX (SO'M)</label>
+                                <input type="number" min="0" max="2000000000" value={sellSom} onChange={e => handleSomChange(e.target.value)} className="input-field" style={{ margin: 0, fontWeight: 800, color: '#4f46e5', fontSize: '18px' }} />
+                                <div style={{ fontSize: '13px', fontWeight: 700, color: '#94a3b8', marginTop: '5px' }}>= ${sellUsd}</div>
                             </div>
-                            <div>
+                            <div style={{ opacity: 0.5 }}>
                                 <label style={{ fontSize: 12, fontWeight: 800, color: '#64748b', display: 'block', marginBottom: 6 }}>NARX ($)</label>
-                                <input type="number" min="0" max="1000000000" step="0.01" value={sellUsd} onChange={e => handleUsdChange(e.target.value)} className="input-field" style={{ margin: 0, color: '#10b981' }} />
+                                <input type="number" min="0" max="1000000000" step="0.01" value={sellUsd} onChange={e => handleUsdChange(e.target.value)} className="input-field" style={{ margin: 0, color: '#94a3b8' }} />
                             </div>
                         </div>
 
@@ -375,8 +376,8 @@ const Sale = () => {
                                     </td>
                                     <td style={{ fontWeight: 700 }}>{item.sell_quantity}</td>
                                     <td style={{ fontWeight: 800, color: '#10b981' }}>
-                                        ${item.total_usd.toFixed(2)}<br/>
-                                        <span style={{fontSize: 10, color: '#64748b'}}>{item.total_som.toLocaleString()}so'm</span>
+                                        {item.total_som.toLocaleString()} so'm<br/>
+                                        <span style={{fontSize: 10, color: '#94a3b8'}}>${item.total_usd.toFixed(2)}</span>
                                     </td>
                                     <td>
                                         <button onClick={() => { const nb = [...basket]; nb.splice(i, 1); setBasket(nb); }}
@@ -393,12 +394,12 @@ const Sale = () => {
                 {basket.length > 0 && (
                     <div style={{ marginTop: 20, padding: 25, background: 'var(--primary-gradient)', borderRadius: 20, color: 'white' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                            <span style={{ fontSize: 14 }}>Jami ($):</span>
-                            <span style={{ fontSize: 24, fontWeight: 800 }}>${grandTotalUsd.toFixed(2)}</span>
+                            <span style={{ fontSize: 14 }}>Jami (so'm):</span>
+                            <span style={{ fontSize: 28, fontWeight: 800 }}>{grandTotalSom.toLocaleString()}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 18 }}>
-                            <span style={{ fontSize: 14 }}>Jami (so'm):</span>
-                            <span style={{ fontSize: 18, fontWeight: 700 }}>{grandTotalSom.toLocaleString()} so'm</span>
+                            <span style={{ fontSize: 14 }}>Jami ($):</span>
+                            <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.8 }}>${grandTotalUsd.toFixed(2)}</span>
                         </div>
                         <button onClick={handleCheckout} className="btn-primary" style={{ background: 'white', color: '#4f46e5', padding: 18, fontSize: 16 }}>
                             SOTUVNI YAKUNLASH ✅
@@ -436,18 +437,18 @@ const Sale = () => {
                                             <tr key={i}>
                                                 <td style={{ padding: '4px 0' }}>{item.name}</td>
                                                 <td style={{ textAlign: 'center' }}>{item.sell_quantity}</td>
-                                                <td style={{ textAlign: 'right' }}>${item.sale_usd}</td>
+                                                <td style={{ textAlign: 'right' }}>{item.sale_som.toLocaleString()}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                                 <div style={{ borderBottom: '1px dashed #ccc', margin: '10px 0' }}></div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '16px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '18px' }}>
                                     <span>JAMI:</span>
-                                    <span>${lastSale.total_usd.toFixed(2)}</span>
+                                    <span>{lastSale.total_som.toLocaleString()} so'm</span>
                                 </div>
-                                <div style={{ textAlign: 'right', fontSize: '12px', marginTop: 5 }}>
-                                    {lastSale.total_som.toLocaleString()} so'm
+                                <div style={{ textAlign: 'right', fontSize: '12px', marginTop: 5, opacity: 0.6 }}>
+                                    ${lastSale.total_usd.toFixed(2)}
                                 </div>
                                 <div style={{ textAlign: 'center', marginTop: 30, fontSize: '12px' }}>
                                     Xaridingiz uchun rahmat!
@@ -488,18 +489,18 @@ const Sale = () => {
                                     <tr key={i}>
                                         <td>{item.name}</td>
                                         <td style={{ textAlign: 'right' }}>{item.sell_quantity}</td>
-                                        <td style={{ textAlign: 'right' }}>${item.total_usd.toFixed(2)}</td>
+                                        <td style={{ textAlign: 'right' }}>{item.total_som.toLocaleString()}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                         <div style={{ borderBottom: '1px dashed black', margin: '10px 0' }}></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px' }}>
                             <span>JAMI:</span>
-                            <span>${lastSale.total_usd.toFixed(2)}</span>
+                            <span>{lastSale.total_som.toLocaleString()} so'm</span>
                         </div>
-                        <div style={{ textAlign: 'right', fontSize: '10px' }}>
-                            {lastSale.total_som.toLocaleString()} so'm
+                        <div style={{ textAlign: 'right', fontSize: '10px', opacity: 0.6 }}>
+                            ${lastSale.total_usd.toFixed(2)}
                         </div>
                         <div style={{ textAlign: 'center', marginTop: '20px', fontSize: '10px' }}>
                             Xaridingiz uchun rahmat!

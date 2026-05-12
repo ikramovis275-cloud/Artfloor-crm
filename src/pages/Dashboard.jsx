@@ -31,15 +31,15 @@ const Dashboard = () => {
             <h2>📊 Dashboard</h2>
             
             <div className="stats-grid">
+                <div className="stat-card" style={{borderBottomColor: '#22c55e'}}>
+                    <h3>Jami Tushum (So'm)</h3>
+                    <p style={{fontSize: '24px'}}>{fmtSom(stats.totals?.total_som)}</p>
+                </div>
                 <div className="stat-card">
                     <h3>Jami Sotuv Miqdori</h3>
                     <p>{Number(stats.totals?.total_quantity || 0).toFixed(2)} dona/kg</p>
                 </div>
-                <div className="stat-card" style={{borderBottomColor: '#22c55e'}}>
-                    <h3>Jami Tushum (So'm)</h3>
-                    <p>{fmtSom(stats.totals?.total_som)}</p>
-                </div>
-                <div className="stat-card" style={{borderBottomColor: '#f59e0b'}}>
+                <div className="stat-card" style={{borderBottomColor: '#f59e0b', opacity: 0.7}}>
                     <h3>Jami Tushum (USD)</h3>
                     <p>{fmtUsd(stats.totals?.total_usd)}</p>
                 </div>

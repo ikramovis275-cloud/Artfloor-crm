@@ -8,7 +8,14 @@ const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' :
 const AddProduct = () => {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
-        code: '', name: '', size: 0, quantity: 0, cost_usd: 0, sale_usd: 0, dollar_rate: 12500, category: 'luxury'
+        code: '', 
+        name: '', 
+        size: 0, 
+        quantity: 0, 
+        cost_usd: 0, 
+        sale_usd: 0, 
+        dollar_rate: parseFloat(localStorage.getItem('dollar_rate')) || 12500, 
+        category: 'luxury'
     });
     const [image, setImage] = useState(null);
     const [preview, setPreview] = useState(null);
@@ -17,6 +24,11 @@ const AddProduct = () => {
     const [cameraOn, setCameraOn] = useState(false);
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
+
+    // Persist dollar rate
+    useEffect(() => {
+        localStorage.setItem('dollar_rate', formData.dollar_rate);
+    }, [formData.dollar_rate]);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -30,7 +42,6 @@ const AddProduct = () => {
 
     const startCamera = async () => {
         try {
-            // Use ideal for better compatibility across devices
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { 
                     facingMode: { ideal: 'environment' },
@@ -50,7 +61,6 @@ const AddProduct = () => {
             setImage(null);
         } catch (err) {
             console.error("Camera access error:", err);
-            // Fallback for devices where 'environment' might still cause issues
             if (err.name === 'OverconstrainedError' || err.name === 'NotFoundError') {
                 try {
                     const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -64,20 +74,16 @@ const AddProduct = () => {
                     alert('Kameraga ulanish imkonsiz: ' + e.message);
                 }
             }
-            alert('Kameraga ulanishda xato: ' + err.message + '\nIltimos, kamera ruxsatini va brauzer sozlamalarini tekshiring.');
+            alert('Kameraga ulanishda xato: ' + err.message);
         }
     };
 
     const stopCamera = () => {
         try {
-            console.log("Stopping camera...");
             if (videoRef.current && videoRef.current.srcObject) {
                 const stream = videoRef.current.srcObject;
                 if (stream.getTracks) {
-                    stream.getTracks().forEach(track => {
-                        track.stop();
-                        console.log("Track stopped:", track.kind);
-                    });
+                    stream.getTracks().forEach(track => track.stop());
                 }
                 videoRef.current.srcObject = null;
             }
@@ -85,24 +91,17 @@ const AddProduct = () => {
             console.error("Stop camera error:", err);
         } finally {
             setCameraOn(false);
-            console.log("Camera component state: OFF");
         }
     };
 
     const capturePhoto = () => {
-        console.log("Capture button clicked");
         try {
             const video = videoRef.current;
             const canvas = canvasRef.current;
-            if (!video || !canvas) {
-                console.error("Video or Canvas ref missing");
-                return;
-            }
+            if (!video || !canvas) return;
 
-            // Get actual dimensions
             const width = video.videoWidth || video.clientWidth || 640;
             const height = video.videoHeight || video.clientHeight || 480;
-            console.log(`Capturing at ${width}x${height}`);
 
             canvas.width = width;
             canvas.height = height;
@@ -110,15 +109,9 @@ const AddProduct = () => {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, width, height);
             
-            // Get data URL
             const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-            if (!dataUrl || dataUrl === 'data:,') {
-                throw new Error("Canvas is empty or invalid");
-            }
-            
             setPreview(dataUrl);
             
-            // Background conversion to File
             const byteString = atob(dataUrl.split(',')[1]);
             const mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0];
             const ab = new ArrayBuffer(byteString.length);
@@ -130,21 +123,18 @@ const AddProduct = () => {
             const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' });
             
             setImage(file);
-            console.log("Image state updated");
-            
-            // Close camera after a tiny delay to ensure state updates are visible
-            setTimeout(() => {
-                stopCamera();
-            }, 100);
-            
+            setTimeout(() => stopCamera(), 100);
         } catch (err) {
             console.error("Capture error:", err);
             alert("Rasm olishda xatolik: " + err.message);
         }
     };
 
-    // Cleanup camera if user leaves component
     useEffect(() => { return () => stopCamera(); }, []);
+
+    // Converted preview values
+    const costSomPreview = (parseFloat(formData.cost_usd) || 0) * (parseFloat(formData.dollar_rate) || 12500);
+    const saleSomPreview = (parseFloat(formData.sale_usd) || 0) * (parseFloat(formData.dollar_rate) || 12500);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -153,10 +143,15 @@ const AddProduct = () => {
         data.append('code', finalCode);
         
         Object.keys(formData).forEach(key => {
-            if (key !== 'code') data.append(key, formData[key]);
+            if (key !== 'code') {
+                data.append(key, formData[key]);
+            }
         });
-        data.append('cost_som', formData.cost_usd * formData.dollar_rate);
-        data.append('sale_som', formData.sale_usd * formData.dollar_rate);
+
+        // Store both
+        data.append('cost_som', costSomPreview);
+        data.append('sale_som', saleSomPreview);
+
         if (image) data.append('image', image);
 
         try {
@@ -170,12 +165,23 @@ const AddProduct = () => {
             alert("❌ Xatolik yuz berdi");
         }
     };
+
     return (
         <div className="card add-product-card">
             <style>{`
                 .add-product-card { max-width: 850px; margin: 0 auto; animation: fadeIn 0.5s; }
                 .add-product-grid { display: grid; grid-template-columns: minmax(300px, 1fr) 1.2fr; gap: 25px; }
                 .price-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+                .preview-som { 
+                    font-size: 14px; 
+                    font-weight: 800; 
+                    color: #64748b; 
+                    margin-top: 8px;
+                    padding: 8px 12px;
+                    background: white;
+                    border-radius: 8px;
+                    border-left: 4px solid #4f46e5;
+                }
                 .camera-overlay-btn { 
                     transition: transform 0.2s, background 0.2s;
                 }
@@ -302,15 +308,17 @@ const AddProduct = () => {
                 <div className="price-grid" style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px' }}>
                     <div>
                         <label style={{ fontSize: '13px', fontWeight: 700, color: '#ef4444' }}>Olish narxi (USD)</label>
-                        <input type="number" step="0.01" name="cost_usd" placeholder="0.00" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000000" />
+                        <input type="number" step="0.01" name="cost_usd" placeholder="0.00" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000" />
+                        <div className="preview-som">= {costSomPreview.toLocaleString()} so'm</div>
                     </div>
                     <div>
                         <label style={{ fontSize: '13px', fontWeight: 700, color: '#10b981' }}>Sotish narxi (USD)</label>
-                        <input type="number" step="0.01" name="sale_usd" placeholder="0.00" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000000" />
+                        <input type="number" step="0.01" name="sale_usd" placeholder="0.00" className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000" />
+                        <div className="preview-som">= {saleSomPreview.toLocaleString()} so'm</div>
                     </div>
                     <div>
-                        <label style={{ fontSize: '13px', fontWeight: 700, color: '#4f46e5' }}>Dollar kursi (So'm)</label>
-                        <input type="number" name="dollar_rate" value={formData.dollar_rate} className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000000" />
+                        <label style={{ fontSize: '13px', fontWeight: 700, color: '#4f46e5' }}>Dollar kursi (1$ = ? so'm)</label>
+                        <input type="number" name="dollar_rate" value={formData.dollar_rate} className="input-field" onChange={handleChange} required style={{ margin: '5px 0 0 0' }} max="1000000" />
                     </div>
                 </div>
 

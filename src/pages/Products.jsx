@@ -251,11 +251,13 @@ const Products = () => {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                                     <div>
                                         <span style={{ fontSize: '11px', color: '#94a3b8' }}>Sotish narxi</span>
-                                        <div style={{ fontSize: '22px', fontWeight: 800, color: '#10b981' }}>${p.sale_usd}</div>
+                                        <div style={{ fontSize: '18px', fontWeight: 800, color: '#10b981' }}>${p.sale_usd}</div>
+                                        <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748b' }}>{parseFloat(p.sale_som).toLocaleString()} so'm</div>
                                     </div>
                                     <div style={{ textAlign: 'right' }}>
                                         <span style={{ fontSize: '11px', color: '#94a3b8' }}>Olish narxi</span>
-                                        <div style={{ fontSize: '16px', fontWeight: 600, color: '#ef4444' }}>${p.cost_usd}</div>
+                                        <div style={{ fontSize: '14px', fontWeight: 600, color: '#ef4444' }}>${p.cost_usd}</div>
+                                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>{parseFloat(p.cost_som).toLocaleString()} so'm</div>
                                     </div>
                                 </div>
 
